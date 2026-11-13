@@ -1,0 +1,13 @@
+/* Shared styles for the area explorer's tap panel and lead form. */
+#info { max-height: calc(100% - 170px); overflow-y: auto; }
+#info .btns { margin-top: 8px; }
+#info .btn { display: inline-block; border: none; cursor: pointer; font: bold .82rem Arial, sans-serif; background: #012169; color: #fff; padding: 8px 11px; border-radius: 4px; text-decoration: none; margin: 2px 4px 2px 0; }
+#info .btn.alt { background: #fff; color: #012169; border: 1px solid #012169; }
+#info .btn.cta { background: #B08D57; color: #fff; }
+#info .btn:disabled { opacity: .6; cursor: default; }
+#lead-form label { display: block; font-size: .78rem; font-weight: bold; color: #012169; margin: 8px 0 0; }
+#lead-form input, #lead-form select, #lead-form textarea { display: block; width: 100%; margin-top: 3px; padding: 8px 9px; border: 1px solid #c8cdd6; border-radius: 4px; font: .9rem Arial, sans-serif; color: #1d2433; background: #fff; }
+#lead-form input:focus, #lead-form select:focus, #lead-form textarea:focus { outline: 2px solid #B08D57; border-color: #B08D57; }
+#lead-form .hp { position: absolute; left: -9999px; width: 1px; height: 1px; opacity: 0; }
+#lead-form .err { color: #b42318; font-size: .82rem; font-weight: bold; min-height: 1em; margin: 8px 0 4px; }
+#lead-form .btn { margin-top: 4px; }
