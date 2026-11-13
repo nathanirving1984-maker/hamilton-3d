@@ -5,6 +5,27 @@
 #info .btn.alt { background: #fff; color: #012169; border: 1px solid #012169; }
 #info .btn.cta { background: #B08D57; color: #fff; }
 #info .btn:disabled { opacity: .6; cursor: default; }
+/* Local place pins + filter row + "what's nearby" list */
+#places { position: fixed; inset: 0; z-index: 9; pointer-events: none; overflow: hidden; }
+.pl { position: absolute; left: 0; top: 0; pointer-events: auto; cursor: pointer; border: none; background: none; padding: 0; display: flex; flex-direction: column; align-items: center; font-family: Arial, Helvetica, sans-serif; will-change: transform; }
+.pl .ic { width: 30px; height: 30px; border-radius: 50%; background: #fff; border: 3px solid var(--c, #012169); display: flex; align-items: center; justify-content: center; font-size: 15px; line-height: 1; box-shadow: 0 2px 5px rgba(0,0,0,.35); order: 2; }
+.pl .nm { order: 1; margin-bottom: 3px; background: rgba(255,255,255,.95); color: #1d2433; font-size: .72rem; font-weight: bold; padding: 2px 7px; border-radius: 999px; white-space: nowrap; max-width: 190px; overflow: hidden; text-overflow: ellipsis; box-shadow: 0 1px 3px rgba(0,0,0,.25); border-bottom: 2px solid var(--c, #012169); }
+.pl.far .nm { display: none; }
+.pl.far .ic { width: 22px; height: 22px; font-size: 11px; border-width: 2px; }
+.pl:hover, .pl.sel { z-index: 3; }
+.pl:hover .nm, .pl.sel .nm { display: block; }
+.pl.sel .ic { box-shadow: 0 0 0 4px #B08D57, 0 2px 6px rgba(0,0,0,.4); }
+#placebar { flex-wrap: nowrap; overflow-x: auto; justify-content: flex-start; max-width: min(calc(100% - 16px), 980px); scrollbar-width: none; padding: 2px; }
+#placebar::-webkit-scrollbar { display: none; }
+#placebar button { flex: none; }
+#info .nearby { margin: 10px 0 8px; border-top: 1px solid #e3e6ec; padding-top: 8px; }
+#info .nearby h4 { color: #012169; font-size: .9rem; margin-bottom: 4px; }
+#info .near-row { display: flex; gap: 9px; align-items: center; width: 100%; text-align: left; background: none; border: none; border-radius: 6px; padding: 5px 4px; cursor: pointer; font: .84rem Arial, sans-serif; color: #1d2433; }
+#info .near-row:hover { background: #f5f1e8; }
+#info .near-row .e { width: 26px; text-align: center; font-size: 1.05rem; flex: none; }
+#info .near-row b { display: block; color: #012169; }
+#info .near-row small { color: #5b6474; font-size: .76rem; }
+#info .near-link { display: block; margin-top: 6px; font-size: .82rem; font-weight: bold; color: #012169; }
 #lead-form label { display: block; font-size: .78rem; font-weight: bold; color: #012169; margin: 8px 0 0; }
 #lead-form input, #lead-form select, #lead-form textarea { display: block; width: 100%; margin-top: 3px; padding: 8px 9px; border: 1px solid #c8cdd6; border-radius: 4px; font: .9rem Arial, sans-serif; color: #1d2433; background: #fff; }
 #lead-form input:focus, #lead-form select:focus, #lead-form textarea:focus { outline: 2px solid #B08D57; border-color: #B08D57; }

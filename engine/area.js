@@ -121,7 +121,42 @@
     var l = new THREE.Line(new THREE.BufferGeometry().setFromPoints(v), new THREE.LineBasicMaterial({ color: color, depthTest: false }));
     l.renderOrder = 10; return l;
   }
-  if (homeParcel) scene.add(outline(homeParcel.pts, 0xf0b429, 1.5));
+  if (homeParcel && (CFG.listings || []).length) scene.add(outline(homeParcel.pts, 0xf0b429, 1.5));
+
+  // ---------- rail line, station platform + shelter (from places.js) ----------
+  (function () {
+    var R = window.AREA_PLACES; if (!R) return;
+    var bed = [], steel = [], plat = [];
+    function strip(arr, a, b, off, w, y) {
+      var dx = b[0] - a[0], dz = b[1] - a[1], l = Math.hypot(dx, dz); if (l < 0.5) return;
+      var px = -dz / l, pz = dx / l, o1 = off - w / 2, o2 = off + w / 2;
+      arr.push(a[0] + px * o1, y, a[1] + pz * o1, b[0] + px * o1, y, b[1] + pz * o1, b[0] + px * o2, y, b[1] + pz * o2,
+               a[0] + px * o1, y, a[1] + pz * o1, b[0] + px * o2, y, b[1] + pz * o2, a[0] + px * o2, y, a[1] + pz * o2);
+    }
+    (R.rails || []).forEach(function (r) {
+      for (var i = 0; i < r.length - 1; i++) { strip(bed, r[i], r[i + 1], 0, 11, 0.9); strip(steel, r[i], r[i + 1], 2.4, 0.6, 1.3); strip(steel, r[i], r[i + 1], -2.4, 0.6, 1.3); }
+    });
+    var shelters = new THREE.Group(); scene.add(shelters);
+    (R.platforms || []).forEach(function (pl) {
+      var closed = pl.length > 3 && Math.hypot(pl[0][0] - pl[pl.length - 1][0], pl[0][1] - pl[pl.length - 1][1]) < 1;
+      var a = pl[0], b = pl[closed ? Math.floor(pl.length / 2) : pl.length - 1];
+      if (!closed) for (var i = 0; i < pl.length - 1; i++) strip(plat, pl[i], pl[i + 1], 0, 14, 3.2);
+      else { var c = centroid(pl); strip(plat, a, b, 0, 14, 3.2); a = [a[0] * 0.5 + c[0] * 0.5, a[1] * 0.5 + c[1] * 0.5]; }
+      // shelter canopy over the middle third of the platform
+      var dx = b[0] - a[0], dz = b[1] - a[1], l = Math.hypot(dx, dz) || 1, mx = (pl[0][0] + b[0]) / 2, mz = (pl[0][1] + b[1]) / 2, rot = Math.atan2(-dz, dx), sl = Math.min(90, l * 0.4);
+      var roof = new THREE.Mesh(new THREE.BoxGeometry(sl, 0.8, 12), new THREE.MeshLambertMaterial({ color: 0x2f6f5e }));
+      roof.position.set(mx, 15, mz); roof.rotation.y = rot; shelters.add(roof);
+      [-1, 1].forEach(function (s) {
+        var post = new THREE.Mesh(new THREE.BoxGeometry(0.9, 12, 0.9), new THREE.MeshLambertMaterial({ color: 0xe8e8e8 }));
+        post.position.set(mx + s * (sl / 2 - 3) * dx / l, 9, mz + s * (sl / 2 - 3) * dz / l); shelters.add(post);
+      });
+    });
+    [[bed, 0x8d8679], [steel, 0x3a3d42], [plat, 0xcfc9bb]].forEach(function (d) {
+      if (!d[0].length) return;
+      var g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(d[0], 3)); g.computeVertexNormals();
+      scene.add(new THREE.Mesh(g, new THREE.MeshLambertMaterial({ color: d[1], side: THREE.DoubleSide })));
+    });
+  })();
 
   // ---------- buildings in the "cottage model" style ----------
   // Lap-siding walls, gable roofs along each building's length with shingle texture and white
@@ -143,6 +178,25 @@
     }
     return { src: b, pts: b.p, bb: bbox(b.p), fp: fp, ht: ht };
   });
+  // Local places (areas/<area>/places.js, from OpenStreetMap): tie each one to the building it sits in,
+  // then decide which buildings are shops / civic buildings / canopies so they don't get drawn as houses.
+  var PL = window.AREA_PLACES || null, places = PL ? PL.places : [];
+  var NONRES = { food: 1, shopping: 1, services: 1, arts: 1, community: 1, schools: 1 };
+  var COMM_T = { commercial: 1, retail: 1, industrial: 1, hotel: 1, school: 1, government: 1, hangar: 1, supermarket: 1, warehouse: 1, office: 1, service: 1, public: 1, civic: 1, kindergarten: 1, hospital: 1, train_station: 1 };
+  places.forEach(function (p, i) {
+    p.i = i; p.minor = p.n === p.s || p.s === 'EV charging';
+    var B = findAt(buildings, p.x, p.z);
+    if (B && NONRES[p.k] && p.s !== 'EV charging') { (B.places = B.places || []).push(p); p.B = B; }
+  });
+  buildings.forEach(function (B) {
+    var t = B.src.t, named = B.src.n && !/^[\d\s-]+$/.test(B.src.n);
+    if (B.ht.src === 'city') return;
+    var gas = B.fp < 7000 && (/fuel|gas station/i.test(B.src.n || '') || (B.places && B.places.every(function (p) { return p.s === 'Gas station'; })));
+    if (t === 'roof' || gas) B.kind = 'canopy';
+    else if (t === 'religious' || t === 'church' || (B.places && B.places.some(function (p) { return p.s === 'Church' || p.s === 'Place of worship'; }))) B.kind = 'church';
+    else if (COMM_T[t] || B.places || (named && B.fp > 1500) || (t === 'yes' && B.fp > 12000)) B.kind = 'commercial';
+  });
+  var COMM = [0xd9d2c4, 0xcfc8ba, 0xc4bcae, 0xddd6cb, 0xbdb7ab, 0xd2c7b3], AWN = [0x8a3b2e, 0x2f4a6b, 0x3f5d49, 0x7a5a2e, 0x5b3a52];
   var WALLS = [0xe3d8c4, 0xd6c9ae, 0xc9c3b8, 0xb7a88d, 0x9aa39a, 0xa9b1b8, 0xc4b59a, 0xe8e2d6, 0x8e97a2, 0xd8c6a6, 0x9da7ae, 0xb3ae9a];
   var DOORS = [0xb0442c, 0x3e5a74, 0x2f3f55, 0x5a6b45, 0x7a3b2e, 0x8a6a4a];
   var TRIM = new THREE.Color(0xf4f3ef);
@@ -213,7 +267,65 @@
     return best;
   }
 
+  // Flat roof over any footprint shape (triangulated), facing up.
+  function flatRoof(acc, pts, y, col) {
+    var c = pts.map(function (p) { return new THREE.Vector2(p[0], p[1]); });
+    if (c.length > 3 && c[0].equals(c[c.length - 1])) c.pop();
+    THREE.ShapeUtils.triangulateShape(c, []).forEach(function (f) {
+      var a = [c[f[0]].x, y, c[f[0]].y], b = [c[f[1]].x, y, c[f[1]].y], d = [c[f[2]].x, y, c[f[2]].y];
+      var up = (b[2] - a[2]) * (d[0] - a[0]) - (b[0] - a[0]) * (d[2] - a[2]);
+      if (up < 0) tri(acc, a, d, b, null, null, null, col); else tri(acc, a, b, d, null, null, null, col);
+    });
+  }
+  // Gas-station style canopy: a flat slab on posts, no walls.
+  function addCanopy(B) {
+    var o = obb(B.pts), top = 17, rot = Math.atan2(-o.uz, o.ux), vx = -o.uz, vz = o.ux;
+    B.ht.wall = top;
+    boxGeo(gTrim, o.cx, top, o.cz, o.L, 1.8, o.W, rot, TRIM);
+    boxGeo(gTrim, o.cx, top - 0.2, o.cz, o.L + 0.3, 0.7, o.W + 0.3, rot, new THREE.Color(0xb23a2e));
+    [[-1, -1], [1, -1], [1, 1], [-1, 1]].forEach(function (s) {
+      var a = s[0] * Math.max(2, o.L / 2 - 4), b = s[1] * Math.max(2, o.W / 2 - 4);
+      boxGeo(gTrim, o.cx + a * o.ux + b * vx, top / 2, o.cz + a * o.uz + b * vz, 1.2, top, 1.2, rot, new THREE.Color(0xd8d8d8));
+    });
+  }
+  // Shops, offices, schools, hotels: plain stucco walls with a darker cap, flat roof behind a parapet,
+  // big storefront glass and an awning on the side that faces the street, window rows upstairs.
+  function addCommercial(B, i, roofColor) {
+    var pts = B.pts, top = B.ht.src === 'lidar' ? Math.max(13, Math.min(B.ht.peak, 70)) : Math.max(15, B.ht.wall);
+    B.ht.wall = top;
+    var wallC = new THREE.Color(COMM[i % COMM.length]), cap = wallC.clone().multiplyScalar(0.8), awn = new THREE.Color(AWN[i % AWN.length]);
+    var sgn = 0, k; for (k = 0; k < pts.length; k++) { var p = pts[k], q = pts[(k + 1) % pts.length]; sgn += p[0] * q[1] - q[0] * p[1]; }
+    var o = obb(pts), nr = nearestRoad(o.cx, o.cz), edges = [], longest = -1, ll = 0;
+    for (k = 0; k < pts.length; k++) {
+      var a = pts[k], b = pts[(k + 1) % pts.length], dx = b[0] - a[0], dz = b[1] - a[1], len = Math.hypot(dx, dz);
+      if (len < 0.5) continue;
+      var nx = dz / len, nz = -dx / len; if (sgn < 0) { nx = -nx; nz = -nz; }
+      quad(gTrim, [a[0], 0, a[1]], [b[0], 0, b[1]], [b[0], top - 2.4, b[1]], [a[0], top - 2.4, a[1]], null, null, null, null, wallC);
+      quad(gTrim, [a[0], top - 2.4, a[1]], [b[0], top - 2.4, b[1]], [b[0], top, b[1]], [a[0], top, a[1]], null, null, null, null, cap);
+      var e = { a: a, dx: dx, dz: dz, len: len, nx: nx, nz: nz, face: nr ? (nx * nr[0] + nz * nr[1]) / (nr[2] || 1) : 0 };
+      edges.push(e); if (len > ll) { ll = len; longest = edges.length - 1; }
+    }
+    var anyFront = edges.some(function (e) { return e.face > 0.3 && e.len >= 14; });
+    var floors = Math.max(1, Math.floor(top / 12.5)), wins = 0;
+    edges.forEach(function (e, idx) {
+      if (e.len < 14) return;
+      var front = anyFront ? e.face > 0.3 : idx === longest, n, w, t;
+      if (front) {
+        n = Math.max(1, Math.floor((e.len - 3) / 11));
+        for (w = 0; w < n && wins < 160; w++) { t = (w + 0.5) / n; wallRect(gWin, e.a[0] + e.dx * t, e.a[1] + e.dz * t, e.nx, e.nz, 0.8, 8.4, 8.4, 0.15, null); wins++; }
+        boxGeo(gTrim, e.a[0] + e.dx / 2 + e.nx * 1.7, 10.4, e.a[1] + e.dz / 2 + e.nz * 1.7, Math.max(6, e.len - 3), 0.55, 3.4, Math.atan2(e.nx, e.nz), awn);
+      }
+      for (var f = 1; f < floors; f++) {
+        n = Math.max(1, Math.floor((e.len - 3) / 12));
+        for (w = 0; w < n && wins < 160; w++) { t = (w + 0.5) / n; wallRect(gWin, e.a[0] + e.dx * t, e.a[1] + e.dz * t, e.nx, e.nz, f * 12.5 + 2.6, 4.4, 5.4, 0.15, null); wins++; }
+      }
+    });
+    flatRoof(gTrim, pts, top - 1.6, roofColor);
+  }
+
   function addBuilding(B, i, roofColor) {
+    if (B.kind === 'canopy') { addCanopy(B); return; }
+    if (B.kind === 'commercial') { addCommercial(B, i, roofColor); return; }
     var pts = B.pts, h = B.ht.wall, wallC = new THREE.Color(WALLS[i % WALLS.length]);
     var sgn = 0; for (var k = 0; k < pts.length; k++) { var p = pts[k], q = pts[(k + 1) % pts.length]; sgn += p[0] * q[1] - q[0] * p[1]; }
     // walls (u = distance along the wall, v = height), plus a foundation strip
@@ -255,6 +367,13 @@
       quad(gRoof, c4[2], c4[3], r0, r1, [0, 0], [o.L, 0], [o.L, 6], [0, 6], roofColor);
       tri(gRoof, c4[1], c4[2], r1, [0, 0], [o.W, 0], [o.W / 2, 6], roofColor);
       tri(gRoof, c4[3], c4[0], r0, [0, 0], [o.W, 0], [o.W / 2, 6], roofColor);
+    }
+    if (B.kind === 'church') {
+      // Bell tower with a small spire at one end.
+      var rotC = Math.atan2(-o.uz, o.ux), tp = P(-o.L / 2 + 6, 0, 0), th = h + 16;
+      boxGeo(gTrim, tp[0], th / 2, tp[2], 10, th, 10, rotC, wallC.clone().multiplyScalar(1.05));
+      boxGeo(gTrim, tp[0], th + 4, tp[2], 6, 8, 6, rotC, TRIM);
+      boxGeo(gTrim, tp[0], th + 12, tp[2], 2.4, 9, 2.4, rotC, roofColor);
     }
     // Front wall: the edge whose outward normal points most toward the nearest street.
     var front = -1, door = null;
@@ -403,6 +522,7 @@
     if (L && L.links) L.links.forEach(function (k, i) { btns.push('<a class="btn' + (i ? ' alt' : '') + '" href="' + esc(k.href) + '"' + (k.newTab ? ' target="_blank" rel="noopener"' : '') + '>' + esc(k.label) + ' &rarr;</a>'); });
     if (LEAD && P) btns.push('<button class="btn cta" id="lead-open">' + (L ? 'Ask about this home' : 'What&rsquo;s my home worth?') + ' &rarr;</button>');
     if (btns.length) rows.push('<p class="btns">' + btns.join(' ') + '</p>');
+    if (!L) rows.push(nearbyHtml(s.x, s.z));
     rows.push('<p class="fine">Lot sizes from the county parcel map (not survey accurate). Building outlines &copy; OpenStreetMap contributors.</p>');
     infoBody.innerHTML = rows.join('');
     var lo = document.getElementById('lead-open'); if (lo) lo.addEventListener('click', showLeadForm);
@@ -456,13 +576,105 @@
   function select(x, z) {
     while (selGroup.children.length) selGroup.remove(selGroup.children[0]);
     var B = findAt(buildings, x, z), P = findAt(parcels, x, z);
-    if (!B && !P) { info.classList.remove('open'); return; }
+    if (!B && !P) { info.classList.remove('open'); markPin(null); return; }
+    if (B && B.places && B.kind) { selectPlace(B.places[0], false); return; }   // a shop, museum, church ...
+    markPin(null);
     if (P) selGroup.add(outline(P.pts, 0x3fa7ff, 1.6));
     if (B) selGroup.add(outline(B.pts, 0xffffff, B.ht.wall + 0.5));
     var listing = P ? LISTINGS.filter(function (l) { return l.apn === P.apn; })[0] : null;
-    current = { P: P, B: B, listing: listing, addr: (B && B.src.a) || nearestAddress(x, z, 40) };
+    current = { P: P, B: B, listing: listing, addr: (B && B.src.a) || nearestAddress(x, z, 40), x: x, z: z };
+    if (B && !B.kind) lastHome = { x: x, z: z, label: current.addr || 'the home you picked' };
     showDetails();
     info.classList.add('open');
+  }
+
+  // ---------- local places: pins, filter chips, cards, "what's nearby" ----------
+  var CATS = {
+    food: { l: 'Food & drink', c: '#b4532a', e: '🍴' }, shopping: { l: 'Shopping', c: '#7a4fa3', e: '🛍️' },
+    parks: { l: 'Parks & play', c: '#2f7d4f', e: '🌳' }, arts: { l: 'Arts & history', c: '#a8324a', e: '🎭' },
+    community: { l: 'Community', c: '#2f5f9e', e: '🏛️' }, schools: { l: 'Schools', c: '#b07d00', e: '🎓' },
+    transit: { l: 'Transit', c: '#1f7a8c', e: '🚆' }, services: { l: 'Services', c: '#5b6474', e: '📍' }
+  };
+  var SUB_E = { 'Café': '☕', 'Church': '⛪', 'Place of worship': '⛪', 'Library': '📚', 'Playground': '🧒', 'Gas station': '⛽',
+    'Hotel': '🏨', 'Bank': '🏦', 'EV charging': '🔌', 'Grocery store': '🛒', 'Fire station': '🚒', 'Freeway bus stop': '🚌',
+    'Dentist': '🦷', 'Sports field': '⚾', 'Skatepark': '🛹', 'Gym': '💪', 'Nature preserve': '🦆', 'Garden': '🌷',
+    'Viewpoint': '🔭', 'Quick bite': '🍔', 'Restaurant': '🍽️', 'Pet shop': '🐾', 'Sports center': '🏊', 'Shipping': '📦',
+    'Museum': '🏛️', 'Community center': '🤝' };
+  function emo(p) { return SUB_E[p.s] || CATS[p.k].e; }
+  var lastHome = null, selPlace = null, placeCat = 'all', plWrap = null;
+  function walkText(d) { var min = Math.round(d * 1.3 / 272); return min <= 30 ? 'about ' + Math.max(1, min) + ' min walk' : 'about ' + (d * 1.3 / 5280).toFixed(1) + ' mi'; }
+  function hoursText(h) {
+    var D = { Mo: 'Mon', Tu: 'Tue', We: 'Wed', Th: 'Thu', Fr: 'Fri', Sa: 'Sat', Su: 'Sun' };
+    return h.split(';').map(function (s) { return s.trim(); }).filter(function (s) { return s && !/\[|Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec|PH/.test(s); })
+      .map(function (s) { return s.replace(/\b(Mo|Tu|We|Th|Fr|Sa|Su)\b/g, function (m) { return D[m]; }).replace(/\boff\b/g, 'closed').replace(/-/g, '–'); }).join('; ');
+  }
+  function markPin(p) { if (selPlace && selPlace.el) selPlace.el.classList.remove('sel'); selPlace = p; if (p && p.el) p.el.classList.add('sel'); }
+  function nearest(x, z, test) { var best = null, bd = 1e9; places.forEach(function (p) { if (p.minor || !test(p)) return; var d = Math.hypot(p.x - x, p.z - z); if (d < bd) { bd = d; best = p; } }); return best ? { p: best, d: bd } : null; }
+  function nearbyHtml(x, z) {
+    if (!places.length) return '';
+    var picks = [
+      nearest(x, z, function (p) { return p.s === 'Café'; }), nearest(x, z, function (p) { return p.s === 'Grocery store'; }),
+      nearest(x, z, function (p) { return p.k === 'food' && p.s !== 'Café'; }), nearest(x, z, function (p) { return p.k === 'parks'; }),
+      nearest(x, z, function (p) { return p.k === 'schools'; }), nearest(x, z, function (p) { return p.k === 'arts'; }),
+      nearest(x, z, function (p) { return p.s === 'Train station'; })
+    ].filter(Boolean);
+    var rows = picks.map(function (n) {
+      return '<button type="button" class="near-row" data-pl="' + n.p.i + '"><span class="e">' + emo(n.p) + '</span><span><b>' + esc(n.p.n) + '</b><small>' + esc(n.p.s) + ' &middot; ' + walkText(n.d) + '</small></span></button>';
+    }).join('');
+    return '<div class="nearby"><h4>What&rsquo;s nearby</h4>' + rows +
+      (CFG.trackerLink ? '<a class="near-link" href="' + esc(CFG.trackerLink) + '">See what&rsquo;s being built in Novato &rarr;</a>' : '') + '</div>';
+  }
+  function showPlace(p) {
+    var c = CATS[p.k], rows = ['<div class="tag" style="background:' + c.c + '">' + emo(p) + ' ' + esc(p.s) + '</div><h3>' + esc(p.n) + '</h3>'], bits = [];
+    if (p.c) bits.push(esc(p.c.charAt(0).toUpperCase() + p.c.slice(1)));
+    if (p.a) bits.push(esc(p.a) + ', Novato');
+    if (bits.length) rows.push('<p>' + bits.join(' &middot; ') + '</p>');
+    var ht = p.h ? hoursText(p.h) : ''; if (ht) rows.push('<p><b>Hours</b> ' + esc(ht) + '</p>');
+    if (p.p) rows.push('<p><b>Phone</b> <a href="tel:' + esc(p.p.replace(/[^\d+]/g, '')) + '">' + esc(p.p) + '</a></p>');
+    if (lastHome) rows.push('<p>' + walkText(Math.hypot(p.x - lastHome.x, p.z - lastHome.z)).replace(/^a/, 'A') + ' from ' + esc(lastHome.label) + '.</p>');
+    var others = p.B && p.B.places ? p.B.places.filter(function (q) { return q !== p; }) : [];
+    if (others.length) rows.push('<p><b>Also here:</b> ' + others.map(function (q) { return '<a href="#" data-pl="' + q.i + '">' + esc(q.n) + '</a>'; }).join(', ') + '</p>');
+    var btns = [];
+    if (p.w) btns.push('<a class="btn" href="' + esc(p.w) + '" target="_blank" rel="noopener">Website &rarr;</a>');
+    btns.push('<a class="btn alt" href="https://www.google.com/maps/dir/?api=1&destination=' + p.ll[0] + ',' + p.ll[1] + '" target="_blank" rel="noopener">Directions</a>');
+    rows.push('<p class="btns">' + btns.join(' ') + '</p>');
+    rows.push('<p class="fine">Place details come from OpenStreetMap volunteers and can be out of date. Check hours before you go.</p>');
+    infoBody.innerHTML = rows.join('');
+  }
+  function selectPlace(p, fly) {
+    while (selGroup.children.length) selGroup.remove(selGroup.children[0]);
+    if (p.B) selGroup.add(outline(p.B.pts, 0xffffff, p.B.ht.wall + 0.5));
+    current = null; markPin(p);
+    if (placeCat !== 'all' && placeCat !== p.k) setPlaceCat('all');
+    showPlace(p); info.classList.add('open');
+    if (fly) {
+      var q = new THREE.Vector3(p.x, 0, p.z), off = camera.position.clone().sub(controls.target); off.setLength(Math.max(320, Math.min(off.length(), 700)));
+      anim = { t0: performance.now(), dur: 1100, p0: camera.position.clone(), p1: q.clone().add(off), q0: controls.target.clone(), q1: q };
+    }
+  }
+  infoBody.addEventListener('click', function (e) {
+    var t = e.target.closest('[data-pl]'); if (!t) return;
+    e.preventDefault(); selectPlace(places[+t.getAttribute('data-pl')], true);
+  });
+  function setPlaceCat(k) {
+    placeCat = k;
+    document.querySelectorAll('#placebar button').forEach(function (b) { b.classList.toggle('on', b.dataset.k === k); });
+  }
+  if (places.length) {
+    plWrap = document.createElement('div'); plWrap.id = 'places'; document.body.appendChild(plWrap);
+    places.forEach(function (p) {
+      var el = document.createElement('button'); el.type = 'button'; el.className = 'pl'; el.style.setProperty('--c', CATS[p.k].c); el.title = p.n;
+      el.innerHTML = '<span class="ic">' + emo(p) + '</span><span class="nm">' + esc(p.n) + '</span>';
+      el.addEventListener('click', function () { selectPlace(p, true); });
+      plWrap.appendChild(el); p.el = el; p.v = new THREE.Vector3();
+    });
+    var bar = document.createElement('div'); bar.id = 'placebar'; bar.className = 'views';
+    var used = {}; places.forEach(function (p) { used[p.k] = 1; });
+    bar.innerHTML = '<button data-k="all" class="on">All places</button>' +
+      Object.keys(CATS).filter(function (k) { return used[k]; }).map(function (k) { return '<button data-k="' + k + '">' + CATS[k].e + ' ' + CATS[k].l + '</button>'; }).join('') +
+      '<button data-k="none">Hide places</button>';
+    document.body.appendChild(bar);
+    bar.addEventListener('click', function (e) { var b = e.target.closest('button'); if (b) setPlaceCat(b.dataset.k); });
   }
   var ray = new THREE.Raycaster(), mouse = new THREE.Vector2(), downAt = null, tapTimer = null;
   renderer.domElement.addEventListener('pointerdown', function (e) { downAt = [e.clientX, e.clientY]; });
@@ -514,11 +726,11 @@
     anim = { t0: performance.now(), dur: 1100, p0: camera.position.clone(), p1: p.clone().add(off), q0: controls.target.clone(), q1: p.clone() };
   });
 
-  document.getElementById('info-close').addEventListener('click', function () { info.classList.remove('open'); while (selGroup.children.length) selGroup.remove(selGroup.children[0]); });
+  document.getElementById('info-close').addEventListener('click', function () { info.classList.remove('open'); markPin(null); while (selGroup.children.length) selGroup.remove(selGroup.children[0]); });
 
-  // ---------- home marker ----------
+  // ---------- home marker (only on pages that include one) ----------
   var pin = document.getElementById('home-pin'), pinV = new THREE.Vector3(0, 70, 0);
-  pin.addEventListener('click', function () { select(0, 0); goTo('home'); });
+  if (pin) pin.addEventListener('click', function () { select(0, 0); goTo('home'); });
 
   // ---------- camera views ----------
   var VIEWS = {
@@ -537,7 +749,11 @@
   document.getElementById('tgAerial').addEventListener('click', function () { aerial.visible = !aerial.visible; this.classList.toggle('on', aerial.visible); });
   document.getElementById('tgLots').addEventListener('click', function () { lotLines.visible = !lotLines.visible; this.classList.toggle('on', lotLines.visible); });
   controls.addEventListener('start', function () { anim = null; document.querySelectorAll('#views button[data-v]').forEach(function (b) { b.classList.remove('on'); }); });
-  function placeViews() { document.getElementById('views').style.top = (document.querySelector('.topbar').offsetHeight + 8) + 'px'; }
+  function placeViews() {
+    var v = document.getElementById('views'), pb = document.getElementById('placebar');
+    v.style.top = (document.querySelector('.topbar').offsetHeight + 8) + 'px';
+    if (pb) pb.style.top = (v.offsetTop + v.offsetHeight + 6) + 'px';
+  }
   placeViews();
   window.addEventListener('resize', function () { camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth, window.innerHeight); placeViews(); });
 
@@ -553,13 +769,35 @@
       var lw = Math.max(60, Math.min(170, ld * 0.11)); lab.scale.set(lw, lw * 96 / 512, 1);
     }
     renderer.render(scene, camera);
-    tmp.copy(pinV).project(camera);
-    var off = tmp.z > 1 || Math.abs(tmp.x) > 1.05 || Math.abs(tmp.y) > 1.05;
-    pin.style.display = off ? 'none' : '';
-    if (!off) { pin.style.left = ((tmp.x + 1) / 2 * window.innerWidth) + 'px'; pin.style.top = ((1 - tmp.y) / 2 * window.innerHeight) + 'px'; }
+    if (pin) {
+      tmp.copy(pinV).project(camera);
+      var off = tmp.z > 1 || Math.abs(tmp.x) > 1.05 || Math.abs(tmp.y) > 1.05;
+      pin.style.display = off ? 'none' : '';
+      if (!off) { pin.style.left = ((tmp.x + 1) / 2 * window.innerWidth) + 'px'; pin.style.top = ((1 - tmp.y) / 2 * window.innerHeight) + 'px'; }
+    }
+    // Place pins: follow the map; names appear as you get closer, minor ones only up close.
+    for (var pi = 0; pi < places.length; pi++) {
+      var pp = places[pi], el = pp.el; if (!el) continue;
+      var show = placeCat === 'all' || placeCat === pp.k || pp === selPlace;
+      if (show) {
+        pp.v.set(pp.x, (pp.B ? pp.B.ht.wall : 0) + 16, pp.z);
+        var pd = camera.position.distanceTo(pp.v);
+        if (pp.minor && pd > 2400 && pp !== selPlace) show = false;
+        else {
+          tmp.copy(pp.v).project(camera);
+          if (tmp.z > 1 || Math.abs(tmp.x) > 1.02 || Math.abs(tmp.y) > 1.02) show = false;
+          else {
+            el.style.transform = 'translate(' + ((tmp.x + 1) / 2 * window.innerWidth).toFixed(1) + 'px,' + ((1 - tmp.y) / 2 * window.innerHeight).toFixed(1) + 'px) translate(-50%,-100%)';
+            var far = pd > (placeCat === 'all' ? 2600 : 5200) && pp !== selPlace;
+            if (pp.far !== far) { pp.far = far; el.classList.toggle('far', far); }
+          }
+        }
+      }
+      if (pp.shown !== show) { pp.shown = show; el.style.display = show ? '' : 'none'; }
+    }
     requestAnimationFrame(loop);
   }
   controls.target.fromArray(VIEWS.overview.t); camera.position.copy(viewPos(VIEWS.overview)); controls.update();
-  window.__area = { camera: camera, controls: controls, select: select, buildings: buildings, parcels: parcels };
+  window.__area = { camera: camera, controls: controls, select: select, buildings: buildings, parcels: parcels, places: places, selectPlace: selectPlace };
   requestAnimationFrame(loop);
 })();

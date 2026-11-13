@@ -56,29 +56,28 @@
 </div>
 <div class="views" id="views">
   <button data-v="overview" class="on">All of Hamilton</button>
-  <button data-v="cottages">Hamilton Cottages</button>
-  <button data-v="home">24 Cottage Ln (for sale)</button>
   <button id="tgAerial" class="on">Aerial photo</button>
   <button id="tgLots" class="on">Lot lines</button>
 </div>
 <div id="scene"></div>
-<div id="home-pin" title="24 Cottage Ln, for sale"><div class="lbl">&#9733; 24 Cottage Ln &middot; For sale</div><div class="stem"></div></div>
 <div id="info"><button id="info-close" aria-label="Close">&times;</button><div id="info-body"></div></div>
 <div id="welcome" role="dialog" aria-labelledby="w-title">
   <h2 id="w-title">Explore Hamilton in 3D</h2>
-  <p>Every building in Hamilton, built from public map, county and lidar data, with real building heights.</p>
+  <p>Every building in Hamilton, plus the coffee, shops, parks, museums, schools and train station around it. Built from public map, county and lidar data.</p>
   <ol>
     <li>Scroll or pinch to zoom in on your street, and drag to move around.</li>
-    <li>Tap any home to see its lot size and footprint.</li>
-    <li>Curious what your home is worth? Tap it and choose <b>&ldquo;What&rsquo;s my home worth?&rdquo;</b> for a free, no-obligation report.</li>
+    <li>Tap a home to see its lot details and what&rsquo;s within walking distance.</li>
+    <li>Tap any pin, like a caf&eacute; or park, for details and directions.</li>
+    <li>Curious what your home is worth? Tap it and choose <b>&ldquo;What&rsquo;s my home worth?&rdquo;</b></li>
   </ol>
   <button id="w-go">Start exploring</button>
 </div>
-<div class="hint">Scroll to zoom where you point &middot; drag to move &middot; tap a home for details</div>
+<div class="hint">Scroll to zoom where you point &middot; drag to move &middot; tap a home or a pin for details</div>
 <div id="loading">Loading Hamilton&hellip;</div>
 <div class="credits">
   Nathan Irving, REALTOR&reg; &middot; DRE# 02414117 &middot; Coldwell Banker Realty &middot; Equal Housing Opportunity &middot;
   Illustrative 3D model; information deemed reliable but not guaranteed. Building outlines &amp; streets &copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap contributors</a> &middot;
+  Places &amp; rail &copy; OpenStreetMap contributors (may be out of date) &middot;
   Parcels: Marin County CDA/Assessor (not survey accurate) &middot; Aerial: USDA NAIP via USGS &middot; Heights: USGS 3DEP lidar (2018) &middot;
   Requests go to Nathan only and are never sold.
 </div>
@@ -86,14 +85,8 @@
 <script>
   window.AREA_CONFIG = {
     aerial: 'areas/hamilton/aerial.jpg',
-    listings: [{
-      apn: '157-860-10', title: '24 Cottage Ln', tag: 'For sale · Open house',
-      html: '$999,000 &middot; 3 bed &middot; 2.5 bath &middot; 1,768 sq ft &middot; Hamilton Cottages (62+)<br>Open house Sat 11/14 &amp; Sun 11/15, 2&ndash;4 PM, hosted by Nathan Irving. Listed by Suzie Fitzpatrick, Coldwell Banker Realty.',
-      links: [
-        { label: 'Listing details', href: 'https://nathanirving1984-maker.github.io/24-cottage-ln/', newTab: true },
-        { label: 'Fly through in 3D', href: 'https://nathanirving1984-maker.github.io/24-cottage-ln/3d.html', newTab: true }
-      ]
-    }],
+    listings: [],
+    trackerLink: '/novato-changes/',
     leadForm: {
       endpoint: 'https://formspree.io/f/mjybonej', agent: 'Nathan Irving', phone: '415.209.4864',
       consent: 'By submitting, you agree that Nathan Irving (Coldwell Banker Realty, DRE# 02414117) may contact you by phone, text or email about your request. Your information is not sold or shared. A home value report is a comparative market analysis, not an appraisal.'
@@ -103,6 +96,7 @@
 </script>
 <script src="areas/hamilton/area-data.js"></script>
 <script src="areas/hamilton/heights.js" onerror="window.AREA_HEIGHTS = null"></script>
+<script src="areas/hamilton/places.js" onerror="window.AREA_PLACES = null"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/utils/BufferGeometryUtils.js"></script>
