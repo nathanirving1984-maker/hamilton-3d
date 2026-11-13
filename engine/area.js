@@ -76,6 +76,23 @@
   var AE = A.aerial;
   var aerial = new THREE.Mesh(new THREE.PlaneGeometry(AE.x1 - AE.x0, AE.z1 - AE.z0), new THREE.MeshLambertMaterial({ color: 0xffffff }));
   aerial.rotation.x = -Math.PI / 2; aerial.position.set((AE.x0 + AE.x1) / 2, 0, (AE.z0 + AE.z1) / 2); scene.add(aerial);
+  // Wide regional photo underneath (areas/<area>/backdrop.js), and soft edges on the detailed photo,
+  // so the map melts into its real surroundings and the haze instead of ending in a hard square.
+  var BD = window.AREA_BACKDROP;
+  if (BD) {
+    var bdMesh = new THREE.Mesh(new THREE.PlaneGeometry(BD.x1 - BD.x0, BD.z1 - BD.z0), new THREE.MeshLambertMaterial({ color: 0x9aa58a }));
+    bdMesh.rotation.x = -Math.PI / 2; bdMesh.position.set((BD.x0 + BD.x1) / 2, -0.3, (BD.z0 + BD.z1) / 2); scene.add(bdMesh);
+    new THREE.TextureLoader().load((CFG.base || '') + BD.src, function (t) {
+      t.anisotropy = renderer.capabilities.getMaxAnisotropy();
+      bdMesh.material.map = t; bdMesh.material.color.set(0xffffff); bdMesh.material.needsUpdate = true;
+    });
+    var fc = document.createElement('canvas'); fc.width = fc.height = 256;
+    var fg = fc.getContext('2d'); fg.fillStyle = '#000'; fg.fillRect(0, 0, 256, 256);
+    for (var fi = 0; fi < 20; fi++) { var fv = Math.round(255 * (fi + 1) / 20); fg.fillStyle = 'rgb(' + fv + ',' + fv + ',' + fv + ')'; fg.fillRect(fi, fi, 256 - 2 * fi, 256 - 2 * fi); }
+    aerial.material.alphaMap = new THREE.CanvasTexture(fc); aerial.material.transparent = true; aerial.material.depthWrite = false;
+    aerial.renderOrder = 1;
+    ground.material.color.set(0x8f9a7c);
+  }
 
   // ---------- streets: solid asphalt with sidewalks (merged) + names ----------
   var roadSegs = [], streetLabels = [];  // road segments: "which way does this house face?"
@@ -217,6 +234,13 @@
     g.fillStyle = '#fff'; g.fillRect(0, 0, 64, 64);
     for (var row = 0; row < 4; row++) { var off = (row % 2) * 8; for (var x = -off; x < 64; x += 16) { g.fillStyle = 'rgba(0,0,0,' + (0.04 + ((x + row * 7) % 3) * 0.03) + ')'; g.fillRect(x + 1, row * 16, 15, 14); } g.fillStyle = 'rgba(0,0,0,0.2)'; g.fillRect(0, row * 16 + 14, 64, 2); }
   }, 1 / 6, 1 / 3.2);
+  // Clay barrel tile: rounded rows running down the slope (about 1 ft apart), with course lines.
+  var tileTex = canvasTex(function (g) {
+    g.fillStyle = '#fff'; g.fillRect(0, 0, 64, 64);
+    for (var x = 0; x < 64; x += 16) { var gr = g.createLinearGradient(x, 0, x + 16, 0); gr.addColorStop(0, 'rgba(0,0,0,0.32)'); gr.addColorStop(0.45, 'rgba(0,0,0,0)'); gr.addColorStop(1, 'rgba(0,0,0,0.26)'); g.fillStyle = gr; g.fillRect(x, 0, 16, 64); }
+    g.fillStyle = 'rgba(0,0,0,0.14)'; for (var y = 0; y < 64; y += 21) g.fillRect(0, y, 64, 2);
+  }, 1 / 4, 1 / 3);
+  var STUCCO = [0xf1e9d8, 0xe9dcc3, 0xf4efe6, 0xe6d5b8, 0xead9c9, 0xdccbb0, 0xe2d7c5, 0xd9c7a8];
   var windowTex = canvasTex(function (g) {
     g.fillStyle = '#f4f3ef'; g.fillRect(0, 0, 64, 64);
     var gr = g.createLinearGradient(0, 0, 64, 64); gr.addColorStop(0, '#4c5d6e'); gr.addColorStop(1, '#2b3540');
@@ -227,7 +251,7 @@
 
   // Geometry accumulators (non-indexed triangles).
   function Acc(withColor) { return { p: [], n: [], u: [], c: withColor ? [] : null }; }
-  var gWall = Acc(true), gRoof = Acc(true), gTrim = Acc(true), gWin = Acc(false);
+  var gWall = Acc(true), gRoof = Acc(true), gTile = Acc(true), gTrim = Acc(true), gWin = Acc(false);
   function tri(acc, a, b, c, ua, ub, uc, col) {
     var ax = b[0] - a[0], ay = b[1] - a[1], az = b[2] - a[2], bx = c[0] - a[0], by = c[1] - a[1], bz = c[2] - a[2];
     var nx = ay * bz - az * by, ny = az * bx - ax * bz, nz = ax * by - ay * bx, l = Math.hypot(nx, ny, nz) || 1;
@@ -328,22 +352,39 @@
     if (B.kind === 'commercial') { addCommercial(B, i, roofColor); return; }
     var pts = B.pts, h = B.ht.wall, wallC = new THREE.Color(WALLS[i % WALLS.length]);
     var sgn = 0; for (var k = 0; k < pts.length; k++) { var p = pts[k], q = pts[(k + 1) % pts.length]; sgn += p[0] * q[1] - q[0] * p[1]; }
-    // walls (u = distance along the wall, v = height), plus a foundation strip
+    // House style, so streets don't look copy-pasted:
+    //  - clay-tile roof + stucco where the aerial photo shows a red/orange roof (Hamilton's Spanish style)
+    //  - otherwise lap siding or plain stucco with a shingle roof; two-storey homes get a trim belt
+    //    and a slightly different shade upstairs; some single-storey homes get a low hip roof.
+    var seedN = ((i * 2654435761) >>> 0) % 1000 / 1000, hs = {}; roofColor.getHSL(hs);
+    var tile = (hs.h < 0.075 || hs.h > 0.97) && hs.s > 0.22 && hs.l > 0.2;
+    if (B.ht.src === 'city') tile = false;                       // Hamilton Cottages keep their own siding look
+    var stucco = tile || (seedN < 0.28 && B.ht.src !== 'city');
+    var wAcc = stucco ? gTrim : gWall, rAcc = tile ? gTile : gRoof;
+    if (stucco) wallC = new THREE.Color(STUCCO[i % STUCCO.length]);
+    if (tile) roofColor = roofColor.clone().lerp(new THREE.Color(0xb5653f), 0.55);
+    var two = h >= 17, hm = two ? h * 0.52 : h, upC = two && !stucco ? wallC.clone().multiplyScalar(i % 2 ? 0.9 : 1.07) : wallC;
+    // walls (u = distance along the wall, v = height)
     var run = 0;
     for (k = 0; k < pts.length; k++) {
       var a = pts[k], b = pts[(k + 1) % pts.length], len = Math.hypot(b[0] - a[0], b[1] - a[1]);
-      quad(gWall, [a[0], 0, a[1]], [b[0], 0, b[1]], [b[0], h, b[1]], [a[0], h, a[1]], [run, 0], [run + len, 0], [run + len, h], [run, h], wallC);
+      quad(wAcc, [a[0], 0, a[1]], [b[0], 0, b[1]], [b[0], hm, b[1]], [a[0], hm, a[1]], [run, 0], [run + len, 0], [run + len, hm], [run, hm], wallC);
+      if (two) {
+        quad(wAcc, [a[0], hm, a[1]], [b[0], hm, b[1]], [b[0], h, b[1]], [a[0], h, a[1]], [run, hm], [run + len, hm], [run + len, h], [run, h], upC);
+        if (len > 1) { var bnx = (b[1] - a[1]) / len, bnz = -(b[0] - a[0]) / len; if (sgn < 0) { bnx = -bnx; bnz = -bnz; } wallRect(gTrim, (a[0] + b[0]) / 2, (a[1] + b[1]) / 2, bnx, bnz, hm - 0.35, len + 0.2, 0.7, 0.1, TRIM); }
+      }
       run += len;
     }
     var o = obb(pts), fill = B.fp / (o.L * o.W), vx = -o.uz, vz = o.ux;
     function P(a2, b2, y) { return [o.cx + a2 * o.ux + b2 * vx, y, o.cz + a2 * o.uz + b2 * vz]; }
     var houseLike = B.fp >= 500 && B.fp <= 4500;
-    if (fill > 0.68 && o.W < 70 && B.fp < 7000) {
+    var ranchHip = !two && !B.kind && o.W > 24 && seedN > 0.55 && B.ht.src !== 'city';
+    if (fill > 0.68 && o.W < 70 && B.fp < 7000 && !ranchHip) {
       // Gable roof, ridge along the long side, 1.4 ft overhang, white rakes and fascia.
       var rise = B.ht.peak ? Math.max(2, Math.min(16, B.ht.peak - h)) : Math.max(3, Math.min(11, o.W * 0.36)), oh = 1.4, La = o.L / 2 + oh, Wb = o.W / 2 + oh, drop = oh * rise / (o.W / 2);
       var slopeLen = Math.hypot(Wb, rise + drop);
       [1, -1].forEach(function (s) {
-        quad(gRoof, P(-La, s * Wb, h - drop), P(La, s * Wb, h - drop), P(La, 0, h + rise), P(-La, 0, h + rise),
+        quad(rAcc, P(-La, s * Wb, h - drop), P(La, s * Wb, h - drop), P(La, 0, h + rise), P(-La, 0, h + rise),
           [-La, 0], [La, 0], [La, slopeLen], [-La, slopeLen], roofColor);
         // fascia board under the eave
         quad(gTrim, P(-La, s * Wb, h - drop - 0.7), P(La, s * Wb, h - drop - 0.7), P(La, s * Wb, h - drop), P(-La, s * Wb, h - drop), null, null, null, null, TRIM);
@@ -351,7 +392,7 @@
       [1, -1].forEach(function (e) {
         var A0 = e * o.L / 2;
         // gable-end wall triangle (siding continues up)
-        tri(gWall, P(A0, -o.W / 2, h), P(A0, o.W / 2, h), P(A0, 0, h + rise), [0, h], [o.W, h], [o.W / 2, h + rise], wallC);
+        tri(wAcc, P(A0, -o.W / 2, h), P(A0, o.W / 2, h), P(A0, 0, h + rise), [0, h], [o.W, h], [o.W / 2, h + rise], upC);
         // white rake trim along both roof edges at this end
         var Ae = e * La;
         [1, -1].forEach(function (s) {
@@ -363,10 +404,16 @@
       var r2 = B.ht.peak ? Math.max(2, Math.min(14, B.ht.peak - h)) : Math.max(3, Math.min(9, o.W * 0.22));
       var c4 = [P(-o.L / 2 - 1, -o.W / 2 - 1, h), P(o.L / 2 + 1, -o.W / 2 - 1, h), P(o.L / 2 + 1, o.W / 2 + 1, h), P(-o.L / 2 - 1, o.W / 2 + 1, h)];
       var ridgeHalf = Math.max(0, o.L / 2 - o.W / 2), r0 = P(-ridgeHalf, 0, h + r2), r1 = P(ridgeHalf, 0, h + r2);
-      quad(gRoof, c4[0], c4[1], r1, r0, [0, 0], [o.L, 0], [o.L, 6], [0, 6], roofColor);
-      quad(gRoof, c4[2], c4[3], r0, r1, [0, 0], [o.L, 0], [o.L, 6], [0, 6], roofColor);
-      tri(gRoof, c4[1], c4[2], r1, [0, 0], [o.W, 0], [o.W / 2, 6], roofColor);
-      tri(gRoof, c4[3], c4[0], r0, [0, 0], [o.W, 0], [o.W / 2, 6], roofColor);
+      var sl2 = Math.hypot(o.W / 2, r2);
+      quad(rAcc, c4[0], c4[1], r1, r0, [0, 0], [o.L, 0], [o.L, sl2], [0, sl2], roofColor);
+      quad(rAcc, c4[2], c4[3], r0, r1, [0, 0], [o.L, 0], [o.L, sl2], [0, sl2], roofColor);
+      tri(rAcc, c4[1], c4[2], r1, [0, 0], [o.W, 0], [o.W / 2, sl2], roofColor);
+      tri(rAcc, c4[3], c4[0], r0, [0, 0], [o.W, 0], [o.W / 2, sl2], roofColor);
+    }
+    // Chimney on some homes.
+    if (houseLike && !B.kind && B.ht.src !== 'city' && (i * 7919) % 10 < 4) {
+      var chTop = h + (B.ht.peak ? Math.max(2, Math.min(14, B.ht.peak - h)) : 6) + 2.5, cp = P(o.L * 0.22, o.W * 0.18, 0), chH = chTop - h + 2;
+      boxGeo(gTrim, cp[0], h - 2 + chH / 2, cp[2], 3.2, chH, 2.6, Math.atan2(-o.uz, o.ux), stucco ? wallC : new THREE.Color(0x9a5f4a));
     }
     if (B.kind === 'church') {
       // Bell tower with a small spire at one end.
@@ -393,10 +440,30 @@
       var a4 = pts[k], b4 = pts[(k + 1) % pts.length], ddx = b4[0] - a4[0], ddz = b4[1] - a4[1], len4 = Math.hypot(ddx, ddz);
       if (len4 < 7) continue;
       var nx4 = ddz / len4, nz4 = -ddx / len4; if (sgn < 0) { nx4 = -nx4; nz4 = -nz4; }
-      var doorT = -1;
+      var doorT = -1, garT = -1, gw = 0;
       if (k === front) {
-        doorT = len4 > 22 ? 0.35 : 0.5; door = true;
+        // Garage door at the far end of the front wall, with a driveway out to the street.
+        if (B.ht.src !== 'city' && len4 > 26 && B.fp > 1100) {
+          gw = len4 > 38 ? 16 : 8.6; garT = 1 - (gw / 2 + 2.2) / len4;
+          if ((garT - 0.28) * len4 < gw / 2 + 4) { garT = -1; gw = 0; }
+        }
+        doorT = garT > 0 ? 0.28 : (len4 > 22 ? 0.35 : 0.5); door = true;
         var dxp = a4[0] + ddx * doorT, dzp = a4[1] + ddz * doorT;
+        var tx4 = ddx / len4, tz4 = ddz / len4, toRoad = nr[0] * nx4 + nr[1] * nz4;
+        var flat = function (cx, cz, w, y, col) {      // paved strip from the wall out toward the street
+          var out = toRoad - ((cx - o.cx) * nx4 + (cz - o.cz) * nz4) - 13;
+          if (out < 5 || out > 120) return;
+          quad(gTrim, [cx - tx4 * w / 2, y, cz - tz4 * w / 2], [cx + tx4 * w / 2, y, cz + tz4 * w / 2],
+            [cx + tx4 * w / 2 + nx4 * out, y, cz + tz4 * w / 2 + nz4 * out], [cx - tx4 * w / 2 + nx4 * out, y, cz - tz4 * w / 2 + nz4 * out], null, null, null, null, col);
+        };
+        flat(dxp, dzp, 3.8, 0.74, new THREE.Color(0xcfc9bd));
+        if (garT > 0) {
+          var gx = a4[0] + ddx * garT, gz = a4[1] + ddz * garT, garC = (i % 2) ? new THREE.Color(0xeeeae0) : wallC.clone().multiplyScalar(0.84);
+          wallRect(gTrim, gx, gz, nx4, nz4, 0, gw + 0.9, 7.9, 0.1, TRIM);
+          wallRect(gTrim, gx, gz, nx4, nz4, 0, gw, 7.4, 0.18, garC);
+          [1.85, 3.7, 5.55].forEach(function (yy) { wallRect(gTrim, gx, gz, nx4, nz4, yy, gw, 0.14, 0.24, garC.clone().multiplyScalar(0.78)); });
+          flat(gx, gz, gw + 2, 0.72, new THREE.Color(0xbfb9ad));
+        }
         wallRect(gTrim, dxp, dzp, nx4, nz4, 0, 4.2, 7.8, 0.12, TRIM);
         wallRect(gTrim, dxp, dzp, nx4, nz4, 0, 3.2, 7.2, 0.2, new THREE.Color(DOORS[i % DOORS.length]));
         // porch roof + posts
@@ -411,6 +478,7 @@
         for (var w = 0; w < n4 && winCount < 48; w++) {
           var t = (w + 0.5) / n4;
           if (f === 0 && doorT >= 0 && Math.abs(t - doorT) * len4 < 4.5) continue;
+          if (f === 0 && garT > 0 && Math.abs(t - garT) * len4 < gw / 2 + 2.4) continue;
           wallRect(gWin, a4[0] + ddx * t, a4[1] + ddz * t, nx4, nz4, y0, 3.4, 4.2, 0.12, null);
           winCount++;
         }
@@ -432,8 +500,30 @@
       var o = obb(B.pts);
       addBuilding(B, i, sample ? sample(o.cx, o.cz) : new THREE.Color(0x777777));
     });
+    // Backyard fences along lot lines, left open toward the street.
+    (function () {
+      var done = {};
+      buildings.forEach(function (B) {
+        if (B.kind || B.fp < 500 || B.ht.src === 'city') return;
+        var c = centroid(B.pts), P = findAt(parcels, c[0], c[1]);
+        if (!P || done[P.apn] || P.size < 3000 || P.size > 22000) return;
+        done[P.apn] = 1;
+        for (var e = 0; e < P.pts.length; e++) {
+          var a = P.pts[e], b = P.pts[(e + 1) % P.pts.length], len = Math.hypot(b[0] - a[0], b[1] - a[1]); if (len < 6) continue;
+          var n = Math.max(1, Math.round(len / 12));
+          var col = new THREE.Color((Math.abs(Math.round(a[0] + b[0] + a[1] + b[1])) % 4) ? 0x9c8566 : 0xe6e2d8);
+          for (var s = 0; s < n; s++) {
+            var p0 = [a[0] + (b[0] - a[0]) * s / n, a[1] + (b[1] - a[1]) * s / n], p1 = [a[0] + (b[0] - a[0]) * (s + 1) / n, a[1] + (b[1] - a[1]) * (s + 1) / n];
+            var nr = nearestRoad((p0[0] + p1[0]) / 2, (p0[1] + p1[1]) / 2);
+            if (nr && nr[2] < 48) continue;
+            quad(gTrim, [p0[0], 0, p0[1]], [p1[0], 0, p1[1]], [p1[0], 5.5, p1[1]], [p0[0], 5.5, p0[1]], null, null, null, null, col);
+          }
+        }
+      });
+    })();
     wallMesh = finish(gWall, new THREE.MeshLambertMaterial({ vertexColors: true, map: sidingTex, side: THREE.DoubleSide }));
     roofMesh = finish(gRoof, new THREE.MeshLambertMaterial({ vertexColors: true, map: roofTex, side: THREE.DoubleSide }));
+    if (gTile.p.length) pickMeshes.push(finish(gTile, new THREE.MeshLambertMaterial({ vertexColors: true, map: tileTex, side: THREE.DoubleSide })));
     var trimMesh = finish(gTrim, new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide }));
     finish(gWin, new THREE.MeshLambertMaterial({ map: windowTex, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }));
     pickMeshes.push(roofMesh, wallMesh, trimMesh);
