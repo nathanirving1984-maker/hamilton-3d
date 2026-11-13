@@ -1,5 +1,6 @@
 /* Shared styles for the area explorer's tap panel and lead form. */
 #info { max-height: calc(100% - 170px); overflow-y: auto; }
+@media (max-width: 640px) { #info { max-height: 50vh; } }
 #info .btns { margin-top: 8px; }
 #info .btn { display: inline-block; border: none; cursor: pointer; font: bold .82rem Arial, sans-serif; background: #012169; color: #fff; padding: 8px 11px; border-radius: 4px; text-decoration: none; margin: 2px 4px 2px 0; }
 #info .btn.alt { background: #fff; color: #012169; border: 1px solid #012169; }

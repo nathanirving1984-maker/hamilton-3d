@@ -60,12 +60,21 @@
     var sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(cv), depthWrite: false, depthTest: false }));
     sp.scale.set(worldW, worldW * 96 / 512, 1); return sp;
   }
+  var HAS_HEIGHTS = !!(window.AREA_HEIGHTS && window.AREA_HEIGHTS.h && window.AREA_HEIGHTS.h.length);
+  var AREA_NAME = A.name || 'Novato';
   // Estimated storeys (only a handful of map entries carry real heights).
   function heightOf(b, fp) {
     if (b.h) { var h = parseFloat(b.h) * 3.28084; if (h > 6) return { wall: Math.max(8, h - 7), est: false }; }
     if (b.l) { var l = parseFloat(b.l); if (l > 0) return { wall: l * 9.5 + 1, est: false }; }
     if (fp < 350) return { wall: 8.5, est: true };          // shed / small garage
     if (fp < 900) return { wall: 10.5, est: true };         // garage or small cottage
+    if (!HAS_HEIGHTS) {
+      // No measured heights for this area: older Novato streets are mostly single-storey, so guess
+      // from footprint (compact footprints are more often two-storey) with a steady per-home mix.
+      var mix = Math.abs(Math.round(b.p[0][0] * 7 + b.p[0][1] * 13)) % 10;
+      if (fp < 4500) return { wall: (fp < 1350 ? mix < 6 : mix < 2) ? 19 : 11, est: true };
+      return { wall: fp > 20000 ? 26 : 18, est: true };
+    }
     if (fp < 4500) return { wall: 19, est: true };          // typical Hamilton home: two storeys
     return { wall: 24, est: true };                         // large building / hangar
   }
@@ -621,7 +630,7 @@
     var s = current, L = s.listing, P = s.P, B = s.B;
     var title = L ? 'Ask about ' + esc(L.title) : 'Free home value report';
     var intro = L ? 'Questions, a private showing, or open house details. Nathan will get back to you.'
-      : 'Get a free comparative market analysis for your Hamilton home from ' + esc(LEAD.agent) + '. No cost, no obligation.';
+      : 'Get a free comparative market analysis for your ' + esc(AREA_NAME) + ' home from ' + esc(LEAD.agent) + '. No cost, no obligation.';
     infoBody.innerHTML =
       '<h3>' + title + '</h3><p>' + intro + '</p>' +
       '<form id="lead-form" novalidate>' +
@@ -634,8 +643,8 @@
       '<input type="hidden" name="apn" value="' + esc(P ? P.apn : '') + '">' +
       '<input type="hidden" name="lot_sqft" value="' + (P ? P.size : '') + '">' +
       '<input type="hidden" name="footprint_sqft" value="' + (B ? Math.round(B.fp) : '') + '">' +
-      '<input type="hidden" name="_subject" value="' + esc((L ? 'Inquiry: ' + L.title : 'Home value request') + ' (Hamilton map)') + '">' +
-      '<input type="hidden" name="source" value="Hamilton Home Explorer">' +
+      '<input type="hidden" name="_subject" value="' + esc((L ? 'Inquiry: ' + L.title : 'Home value request') + ' (' + AREA_NAME + ' 3D map)') + '">' +
+      '<input type="hidden" name="source" value="' + esc(AREA_NAME) + ' 3D map">' +
       '<input type="text" name="_gotcha" class="hp" tabindex="-1" autocomplete="off">' +
       '<p class="err" id="lead-err" role="alert"></p>' +
       '<button type="submit" class="btn cta">' + (L ? 'Send' : 'Request my free report') + '</button> <button type="button" class="btn alt" id="lead-back">Back</button>' +

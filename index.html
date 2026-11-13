@@ -22,6 +22,7 @@
   .views { position: fixed; z-index: 20; left: 50%; transform: translateX(-50%); display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; max-width: calc(100% - 24px); }
   .views button { background: rgba(255,255,255,.94); color: var(--navy); border: 1px solid rgba(1,33,105,.25); border-radius: 999px; padding: 7px 13px; font: bold .8rem Arial, sans-serif; cursor: pointer; box-shadow: 0 1px 4px rgba(0,0,0,.12); }
   .views button.on { background: var(--navy); color: #fff; }
+  .views .arealink { background: var(--gold); color: #fff; border-radius: 999px; padding: 7px 13px; font: bold .8rem Arial, sans-serif; text-decoration: none; box-shadow: 0 1px 4px rgba(0,0,0,.2); white-space: nowrap; }
   #home-pin { position: fixed; z-index: 10; transform: translate(-50%, -100%); cursor: pointer; display: flex; flex-direction: column; align-items: center; }
   #home-pin .lbl { background: var(--gold); color: var(--navy); font-size: .8rem; font-weight: bold; padding: 5px 10px; border-radius: 999px; border: 1.5px solid #fff; box-shadow: 0 2px 6px rgba(0,0,0,.3); white-space: nowrap; }
   #home-pin .stem { width: 2px; height: 14px; background: var(--gold); }
@@ -56,6 +57,7 @@
 </div>
 <div class="views" id="views">
   <button data-v="overview" class="on">All of Hamilton</button>
+  <a class="arealink" href="downtown.html">Go to Downtown Novato &rarr;</a>
   <button id="tgAerial" class="on">Aerial photo</button>
   <button id="tgLots" class="on">Lot lines</button>
 </div>
