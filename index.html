@@ -3,10 +3,10 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>Hamilton in 3D | Nathan Irving, Coldwell Banker Realty</title>
-<meta name="description" content="Explore every home in Hamilton, Novato in 3D, built from public map, county and lidar data. Tap any home for its lot size and footprint. From Nathan Irving, Coldwell Banker Realty.">
-<meta property="og:title" content="Hamilton in 3D: find your home">
-<meta property="og:description" content="Every home in Hamilton, Novato in 3D. Tap your home for lot details and a free home value report.">
+<title>Novato in 3D | Nathan Irving, Coldwell Banker Realty</title>
+<meta name="description" content="Explore Novato in 3D on one connected map: every home, plus the coffee, shops, parks, schools and train stations around it. Tap any home for lot details and what's within walking distance. From Nathan Irving, Coldwell Banker Realty.">
+<meta property="og:title" content="Novato in 3D: explore your neighborhood">
+<meta property="og:description" content="One connected 3D map of Novato. Tap your home for lot details and what's within walking distance.">
 <style>
   :root { --navy: #012169; --gold: #B08D57; }
   * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -17,15 +17,11 @@
   .topbar .home { color: var(--gold); font-size: .72rem; font-weight: bold; text-decoration: none; }
   .topbar .t2 { color: var(--gold); font-size: .76rem; }
   .topbar .agent { text-align: right; font-size: .78rem; line-height: 1.35; }
-  .topbar .agent b { color: #fff; }
   .topbar .agent a { color: var(--gold); text-decoration: none; font-weight: bold; }
   .views { position: fixed; z-index: 20; left: 50%; transform: translateX(-50%); display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; max-width: calc(100% - 24px); }
   .views button { background: rgba(255,255,255,.94); color: var(--navy); border: 1px solid rgba(1,33,105,.25); border-radius: 999px; padding: 7px 13px; font: bold .8rem Arial, sans-serif; cursor: pointer; box-shadow: 0 1px 4px rgba(0,0,0,.12); }
   .views button.on { background: var(--navy); color: #fff; }
-  .views .arealink { background: var(--gold); color: #fff; border-radius: 999px; padding: 7px 13px; font: bold .8rem Arial, sans-serif; text-decoration: none; box-shadow: 0 1px 4px rgba(0,0,0,.2); white-space: nowrap; }
-  #home-pin { position: fixed; z-index: 10; transform: translate(-50%, -100%); cursor: pointer; display: flex; flex-direction: column; align-items: center; }
-  #home-pin .lbl { background: var(--gold); color: var(--navy); font-size: .8rem; font-weight: bold; padding: 5px 10px; border-radius: 999px; border: 1.5px solid #fff; box-shadow: 0 2px 6px rgba(0,0,0,.3); white-space: nowrap; }
-  #home-pin .stem { width: 2px; height: 14px; background: var(--gold); }
+  .views .lbl { align-self: center; font: bold .74rem Arial, sans-serif; color: #fff; background: rgba(1,33,105,.8); padding: 5px 10px; border-radius: 999px; }
   #info { position: fixed; z-index: 30; right: 14px; bottom: 50px; width: 350px; max-width: calc(100% - 28px); background: #fff; border-radius: 8px; box-shadow: 0 8px 30px rgba(0,0,0,.25); border-top: 4px solid var(--gold); padding: 14px 16px 12px; display: none; }
   #info.open { display: block; }
   #info h3 { color: var(--navy); font-size: 1.05rem; margin-bottom: 6px; padding-right: 24px; }
@@ -42,9 +38,10 @@
   .credits { position: fixed; z-index: 20; left: 0; right: 0; bottom: 0; background: rgba(255,255,255,.96); font-size: .66rem; color: #4b5563; padding: 6px 12px; text-align: center; line-height: 1.4; }
   .credits a { color: var(--navy); }
   #loading { position: fixed; inset: 0; z-index: 40; display: flex; align-items: center; justify-content: center; background: #cfe3f3; color: var(--navy); font-weight: bold; }
+  #loading.chip { inset: auto; left: 50%; bottom: 58px; transform: translateX(-50%); z-index: 16; background: rgba(1,33,105,.88); color: #fff; font-size: .76rem; padding: 6px 13px; border-radius: 999px; pointer-events: none; }
   @media (max-width: 640px) {
     .topbar .t2 { display: none; } .topbar .agent { text-align: left; font-size: .72rem; }
-    .views { gap: 4px; width: calc(100% - 16px); } .views button { padding: 5px 9px; font-size: .7rem; }
+    .views { gap: 4px; width: calc(100% - 16px); } .views button { padding: 5px 9px; font-size: .7rem; } .views .lbl { display: none; }
     .hint { display: none; } #info { left: 14px; right: 14px; width: auto; bottom: 64px; } .credits { font-size: .58rem; }
   }
 </style>
@@ -52,43 +49,47 @@
 </head>
 <body>
 <div class="topbar">
-  <div><a class="home" href="/">&larr; Novato, up close</a><div class="t1">Hamilton in 3D</div><div class="t2">Every home in Hamilton, Novato in 3D &middot; find yours and tap it</div></div>
+  <div><a class="home" href="/">&larr; Novato, up close</a><div class="t1">Novato in 3D</div><div class="t2">One connected map &middot; drag anywhere, find your home and tap it</div></div>
   <div class="agent"><b>Nathan Irving, REALTOR&reg;</b> &middot; Coldwell Banker Realty<br><a href="tel:+14152094864">415.209.4864</a> &middot; <a href="mailto:nathan.irving@cbrealty.com">nathan.irving@cbrealty.com</a></div>
 </div>
 <div class="views" id="views">
-  <button data-v="overview" class="on">All of Hamilton</button>
-  <a class="arealink" href="downtown.html">Go to Downtown Novato &rarr;</a>
+  <span class="lbl">Jump to</span>
   <button id="tgAerial" class="on">Aerial photo</button>
   <button id="tgLots" class="on">Lot lines</button>
 </div>
 <div id="scene"></div>
 <div id="info"><button id="info-close" aria-label="Close">&times;</button><div id="info-body"></div></div>
 <div id="welcome" role="dialog" aria-labelledby="w-title">
-  <h2 id="w-title">Explore Hamilton in 3D</h2>
-  <p>Every building in Hamilton, plus the coffee, shops, parks, museums, schools and train station around it. Built from public map, county and lidar data.</p>
+  <h2 id="w-title">Explore Novato in 3D</h2>
+  <p>One connected map of Novato: every building, plus the coffee, shops, parks, schools and train stations around it. Built from public map and county data.</p>
   <ol>
-    <li>Scroll or pinch to zoom in on your street, and drag to move around.</li>
+    <li>Drag to move anywhere in town. Scroll or pinch to zoom. The map fills in as you go.</li>
+    <li>Use the <b>Jump to</b> buttons to hop between neighborhoods.</li>
     <li>Tap a home to see its lot details and what&rsquo;s within walking distance.</li>
     <li>Tap any pin, like a caf&eacute; or park, for details and directions.</li>
-    <li>Curious what your home is worth? Tap it and choose <b>&ldquo;What&rsquo;s my home worth?&rdquo;</b></li>
   </ol>
   <button id="w-go">Start exploring</button>
 </div>
-<div class="hint">Scroll to zoom where you point &middot; drag to move &middot; tap a home or a pin for details</div>
-<div id="loading">Loading Hamilton&hellip;</div>
+<div class="hint">Drag to move &middot; scroll to zoom where you point &middot; tap a home or a pin for details</div>
+<div id="loading">Loading Novato&hellip;</div>
 <div class="credits">
   Nathan Irving, REALTOR&reg; &middot; DRE# 02414117 &middot; Coldwell Banker Realty &middot; Equal Housing Opportunity &middot;
   Illustrative 3D model; information deemed reliable but not guaranteed. Building outlines &amp; streets &copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap contributors</a> &middot;
   Places &amp; rail &copy; OpenStreetMap contributors (may be out of date) &middot;
-  Parcels: Marin County CDA/Assessor (not survey accurate) &middot; Aerial: USDA NAIP via USGS &middot; Heights: USGS 3DEP lidar (2018) &middot;
+  Parcels: Marin County CDA/Assessor (not survey accurate) &middot; Aerial: USDA NAIP via USGS &middot; Building heights are estimates (Hamilton: USGS 3DEP lidar, 2018) &middot;
   Requests go to Nathan only and are never sold.
 </div>
 
 <script>
-  window.AREA_CONFIG = {
-    aerial: 'areas/hamilton/aerial.jpg',
-    listings: [],
+  window.CITY_CONFIG = {
+    base: 'areas/novato/',
     trackerLink: '/novato-changes/',
+    jumps: [
+      { id: 'downtown', label: 'Downtown', ll: [38.1074, -122.5697] },
+      { id: 'hamilton', label: 'Hamilton', ll: [38.0588, -122.5244] },
+      { id: 'ignacio', label: 'Ignacio', ll: [38.0705, -122.5420] },
+      { id: 'sanmarin', label: 'San Marin', ll: [38.1215, -122.5985] }
+    ],
     leadForm: {
       endpoint: 'https://formspree.io/f/mjybonej', agent: 'Nathan Irving', phone: '415.209.4864',
       consent: 'By submitting, you agree that Nathan Irving (Coldwell Banker Realty, DRE# 02414117) may contact you by phone, text or email about your request. Your information is not sold or shared. A home value report is a comparative market analysis, not an appraisal.'
@@ -96,13 +97,11 @@
   };
   document.getElementById('w-go').addEventListener('click', function () { document.getElementById('welcome').style.display = 'none'; });
 </script>
-<script src="areas/hamilton/area-data.js"></script>
-<script src="areas/hamilton/heights.js" onerror="window.AREA_HEIGHTS = null"></script>
-<script src="areas/hamilton/backdrop.js" onerror="window.AREA_BACKDROP = null"></script>
-<script src="areas/hamilton/places.js" onerror="window.AREA_PLACES = null"></script>
+<script src="areas/novato/index.js"></script>
+<script src="areas/novato/backdrop.js" onerror="window.AREA_BACKDROP = null"></script>
+<script src="areas/novato/places.js" onerror="window.AREA_PLACES = null"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/utils/BufferGeometryUtils.js"></script>
-<script src="engine/area.js"></script>
+<script src="engine/city.js"></script>
 </body>
 </html>
